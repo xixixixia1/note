@@ -1,0 +1,56 @@
+{
+  "name": "desktop-sticky-note",
+  "version": "1.0.2",
+  "description": "Desktop sticky note app with a minimal Electron shell.",
+  "author": "morefun",
+  "main": "electron-main.js",
+  "private": true,
+  "productName": "Desktop Sticky Note",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^37.10.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.morefun.desktop-sticky-note",
+    "productName": "Desktop Sticky Note",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "electron-main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Desktop Sticky Note"
+    }
+  }
+}

@@ -1,0 +1,2696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desktop Sticky Note</title>
+  <style>
+    :root {
+      --sidebar-bg: #f2f2f2;
+      --sidebar-width: 160px;
+      --toolbar-height: 44px;
+      --toolbar-bg: rgba(255, 255, 255, 0.86);
+      --active-highlight: rgba(0, 0, 0, 0.08);
+      --text-primary: #333;
+      --text-muted: #888;
+      --done-text: #a4a4a4;
+      --border: #e0e0e0;
+      --surface: #fffdf8;
+      --shadow: rgba(48, 38, 24, 0.12);
+      --calendar-dot: #2f855a;
+      --mini-width: 220px;
+      --mini-radius: 12px;
+      --mini-bg: rgba(255, 255, 255, 0.92);
+      --mini-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+      --font-ui: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      font-family: var(--font-ui);
+      color: var(--text-primary);
+      background:
+        radial-gradient(circle at top left, rgba(255, 211, 182, 0.55), transparent 30%),
+        radial-gradient(circle at top right, rgba(255, 241, 179, 0.42), transparent 32%),
+        linear-gradient(155deg, #f9f3e7 0%, #fffdf7 52%, #f3eadb 100%);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      background: none;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .app {
+      height: 100%;
+      padding: 18px;
+    }
+
+    .app.mini {
+      padding: 0;
+      background: transparent;
+    }
+
+    .app.mini .frame {
+      display: none;
+    }
+
+    .app:not(.mini) .mini-strip {
+      display: none;
+    }
+
+    .frame {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      height: 100%;
+      overflow: hidden;
+      border-radius: 28px;
+      background: rgba(255, 252, 246, 0.82);
+      box-shadow: 0 22px 60px rgba(91, 68, 36, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.68);
+      backdrop-filter: blur(16px);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px 8px 10px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(242, 242, 242, 0.95));
+      border-right: 1px solid var(--border);
+    }
+
+    .sidebar-title {
+      padding: 4px 8px 0;
+      font-size: 11px;
+      line-height: 1;
+      letter-spacing: 0.18em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .calendar-card {
+      padding: 8px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+    }
+
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .calendar-title {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .calendar-nav {
+      display: flex;
+      gap: 4px;
+    }
+
+    .calendar-nav button {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .calendar-weekdays,
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+
+    .calendar-weekday {
+      font-size: 10px;
+      text-align: center;
+      color: var(--text-muted);
+      padding: 2px 0;
+    }
+
+    .calendar-day {
+      position: relative;
+      min-height: 18px;
+      padding: 3px 0;
+      border-radius: 8px;
+      font-size: 11px;
+      text-align: center;
+      transition: background 150ms ease, transform 150ms ease;
+    }
+
+    .calendar-day:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.05);
+      transform: translateY(-1px);
+    }
+
+    .calendar-day.muted {
+      color: #bcbcbc;
+    }
+
+    .calendar-day.today {
+      background: #222;
+      color: #fff;
+    }
+
+    .calendar-day.selected {
+      outline: 2px solid rgba(66, 153, 225, 0.55);
+      outline-offset: -2px;
+    }
+
+    .calendar-day.has-data::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 1px;
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--calendar-dot);
+      transform: translateX(-50%);
+    }
+
+    .calendar-filter-note {
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .sidebar-scroll {
+      flex: 1;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .group {
+      margin-top: 8px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.56);
+      overflow: hidden;
+    }
+
+    .group-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 22px;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 8px 7px;
+    }
+
+    .group-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .group-toggle .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .group-action {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .group-body {
+      padding: 0 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 320px;
+      overflow: auto;
+      transition: max-height 300ms ease, opacity 200ms ease;
+    }
+
+    .group.collapsed .group-body {
+      max-height: 0;
+      opacity: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      overflow: hidden;
+    }
+
+    .item-row {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr) 20px;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 6px;
+      border-radius: 12px;
+      transition: background 150ms ease, transform 150ms ease;
+    }
+
+    .item-row:hover {
+      background: rgba(255, 255, 255, 0.74);
+      transform: translateY(-1px);
+    }
+
+    .item-row.active {
+      background: var(--active-highlight);
+    }
+
+    .item-color {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+
+    .item-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+      font-size: 12px;
+    }
+
+    .item-delete {
+      width: 20px;
+      height: 20px;
+      border-radius: 8px;
+      color: var(--text-muted);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: var(--toolbar-height) minmax(0, 1fr);
+      min-width: 0;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 0 14px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      -webkit-app-region: drag;
+    }
+
+    .toolbar-title {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .toolbar-path {
+      color: #555;
+      white-space: nowrap;
+    }
+
+    .toolbar-title button,
+    .toolbar-title input {
+      min-width: 0;
+      max-width: 420px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: transparent;
+      text-align: left;
+      color: inherit;
+    }
+
+    .toolbar-title button:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .toolbar-title input {
+      border-color: rgba(0, 0, 0, 0.12);
+      background: rgba(255, 255, 255, 0.76);
+      outline: none;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .toolbar-button {
+      min-width: 34px;
+      padding: 0 12px;
+      height: 34px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+      transition: transform 150ms ease, background 150ms ease;
+      white-space: nowrap;
+      -webkit-app-region: no-drag;
+    }
+
+    .toolbar-title button,
+    .toolbar-title input {
+      -webkit-app-region: no-drag;
+    }
+
+    .toolbar-button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.98);
+    }
+
+    .toolbar-button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .surface {
+      position: relative;
+      overflow: hidden;
+      padding: 16px;
+    }
+
+    .content-panel {
+      position: relative;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)), var(--panel-color, #ffefc9);
+      box-shadow: 0 18px 38px var(--shadow);
+      overflow: hidden;
+      animation: panelIn 150ms ease;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.38);
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .panel-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 12px;
+    }
+
+    .badge {
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.56);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+    }
+
+    .note-body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      flex: 1;
+    }
+
+    .note-editor {
+      flex: 1;
+      min-height: 0;
+      padding: 18px 20px 10px;
+      outline: none;
+      overflow: auto;
+      font-size: 15px;
+      line-height: 1.8;
+      color: #43342d;
+    }
+
+    .note-editor.is-empty::before {
+      content: attr(data-placeholder);
+      color: rgba(67, 52, 45, 0.48);
+    }
+
+    .note-editor p:first-child {
+      margin-top: 0;
+    }
+
+    .note-editor img {
+      max-width: 100%;
+      border-radius: 14px;
+      box-shadow: 0 10px 26px rgba(54, 43, 29, 0.16);
+      margin: 8px 0;
+    }
+
+    .note-footer {
+      padding: 8px 20px 16px;
+      text-align: right;
+      font-size: 12px;
+      color: rgba(67, 52, 45, 0.7);
+    }
+
+    .todo-body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      flex: 1;
+      padding: 14px 18px 18px;
+      gap: 14px;
+    }
+
+    .todo-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .todo-scroller {
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .todo-item {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.5);
+      transition: transform 150ms ease, background 150ms ease;
+    }
+
+    .todo-item:hover {
+      transform: translateY(-1px);
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .todo-item.dragging {
+      opacity: 0.55;
+    }
+
+    .todo-checkbox {
+      width: 18px;
+      height: 18px;
+      accent-color: #3d9970;
+    }
+
+    .todo-text {
+      min-width: 0;
+      word-break: break-word;
+      font-size: 14px;
+    }
+
+    .todo-item.done .todo-text,
+    .todo-item.abandoned .todo-text {
+      color: var(--done-text);
+      text-decoration: line-through;
+    }
+
+    .todo-tag {
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.56);
+      font-size: 11px;
+      color: #4f4f4f;
+    }
+
+    .todo-add {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 42px;
+      gap: 8px;
+    }
+
+    .todo-add input {
+      height: 40px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 0 14px;
+      outline: none;
+    }
+
+    .todo-add button {
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+      font-size: 18px;
+    }
+
+    .archive {
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.3);
+      overflow: hidden;
+    }
+
+    .archive-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: left;
+    }
+
+    .archive-content {
+      padding: 0 12px 12px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 300ms ease;
+    }
+
+    .archive.expanded .archive-content {
+      max-height: 400px;
+    }
+
+    .archive-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 24px;
+      text-align: center;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .popover,
+    .menu {
+      position: fixed;
+      z-index: 40;
+      min-width: 200px;
+      padding: 10px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-shadow: 0 20px 42px rgba(39, 32, 20, 0.18);
+      animation: popIn 120ms ease;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .swatch {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.9);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+
+    .color-picker-input {
+      width: 100%;
+      height: 40px;
+      border: 0;
+      background: transparent;
+      padding: 0;
+    }
+
+    .menu button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      text-align: left;
+    }
+
+    .menu button:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .menu-divider {
+      height: 1px;
+      margin: 8px 0;
+      background: var(--border);
+    }
+
+    dialog {
+      border: 0;
+      padding: 0;
+      border-radius: 24px;
+      width: min(360px, calc(100vw - 32px));
+      overflow: hidden;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.22);
+    }
+
+    dialog::backdrop {
+      background: rgba(20, 18, 12, 0.26);
+      backdrop-filter: blur(4px);
+    }
+
+    .dialog-card {
+      padding: 18px;
+      background: #fffefb;
+    }
+
+    .dialog-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .dialog-copy {
+      margin-bottom: 16px;
+      color: #666;
+      line-height: 1.6;
+      font-size: 13px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .field input {
+      height: 40px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 0 12px;
+      outline: none;
+    }
+
+    .quick-colors {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .quick-color {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+    }
+
+    .mini-strip {
+      width: var(--mini-width);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: var(--mini-radius);
+      background: var(--mini-bg);
+      box-shadow: var(--mini-shadow);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      color: var(--text-primary);
+    }
+
+    .mini-header {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 8px 0 10px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 13px;
+      -webkit-app-region: drag;
+    }
+
+    .mini-header button,
+    .mini-actions button,
+    .mini-row button,
+    .mini-task input {
+      -webkit-app-region: no-drag;
+    }
+
+    .mini-header button {
+      height: 26px;
+      padding: 0 8px;
+      border-radius: 9px;
+      background: rgba(0, 0, 0, 0.06);
+      font-size: 12px;
+    }
+
+    .mini-body {
+      flex: 1;
+      min-height: 0;
+      padding: 8px;
+      overflow: auto;
+    }
+
+    .mini-section {
+      margin-bottom: 10px;
+    }
+
+    .mini-section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 6px 2px;
+      color: #666;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) 24px;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 6px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.58);
+      margin-bottom: 5px;
+    }
+
+    .mini-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+    }
+
+    .mini-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: left;
+      font-size: 12px;
+    }
+
+    .mini-open {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .mini-preview {
+      max-height: 180px;
+      overflow: auto;
+      margin: -2px 0 6px 17px;
+      padding: 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.76);
+      color: #555;
+      font-size: 12px;
+      line-height: 1.6;
+      animation: panelIn 150ms ease;
+    }
+
+    .mini-todo {
+      padding: 7px;
+      border-radius: 11px;
+      background: rgba(255, 255, 255, 0.48);
+      margin-bottom: 6px;
+    }
+
+    .mini-todo-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .mini-task {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      align-items: start;
+      gap: 5px;
+      padding: 3px 0;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .mini-task span {
+      min-width: 0;
+      word-break: break-word;
+    }
+
+    .mini-more {
+      display: block;
+      margin-top: 4px;
+      width: 100%;
+      padding: 5px;
+      border-radius: 8px;
+      color: #666;
+      background: rgba(0, 0, 0, 0.04);
+      font-size: 12px;
+    }
+
+    .mini-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    .mini-actions button {
+      height: 30px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.06);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .mini-empty {
+      padding: 10px 6px;
+      color: #888;
+      font-size: 12px;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .dialog-actions button {
+      min-width: 86px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.06);
+    }
+
+    .dialog-actions .primary {
+      background: #222;
+      color: #fff;
+    }
+
+    @keyframes panelIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes popIn {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        padding: 10px;
+      }
+
+      .frame {
+        grid-template-columns: 160px minmax(0, 1fr);
+        border-radius: 20px;
+      }
+
+      .toolbar-title button,
+      .toolbar-title input {
+        max-width: 180px;
+      }
+
+      .toolbar-actions {
+        gap: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="frame">
+      <aside class="sidebar">
+        <div class="sidebar-title">&#20415;&#31614;&#24212;&#29992;</div>
+        <section class="calendar-card" id="calendarCard"></section>
+        <div class="sidebar-scroll">
+          <section class="group" data-group="notes">
+            <div class="group-header">
+              <button class="group-toggle" type="button" data-toggle-group="notes">
+                <span>&#128221;</span>
+                <span class="label">&#20415;&#31614;</span>
+              </button>
+              <button class="group-action" type="button" data-create-type="note" title="&#26032;&#24314;&#20415;&#31614;">+</button>
+            </div>
+            <div class="group-body" id="noteGroupBody"></div>
+          </section>
+
+          <section class="group" data-group="todoLists">
+            <div class="group-header">
+              <button class="group-toggle" type="button" data-toggle-group="todoLists">
+                <span>&#9989;</span>
+                <span class="label">&#24453;&#21150;&#20107;&#39033;</span>
+              </button>
+              <button class="group-action" type="button" data-create-type="todo" title="&#26032;&#24314;&#24453;&#21150;&#21015;&#34920;">+</button>
+            </div>
+            <div class="group-body" id="todoGroupBody"></div>
+          </section>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="toolbar">
+          <div class="toolbar-title" id="toolbarTitle"></div>
+          <div class="toolbar-actions">
+            <button class="toolbar-button" id="searchButton" title="&#25628;&#32034;">&#128269; &#25628;&#32034;</button>
+            <button class="toolbar-button" id="newButton" title="&#26032;&#24314;">+ &#26032;&#24314;</button>
+            <button class="toolbar-button" id="pinButton" title="&#32622;&#39030;">&#128204; &#32622;&#39030;</button>
+            <button class="toolbar-button" id="deleteButton" title="&#21024;&#38500;">&#128465; &#21024;&#38500;</button>
+            <button class="toolbar-button" id="miniButton" title="&#20999;&#25442;&#21040;&#36855;&#20320;&#26465;">&#9632; &#36855;&#20320;</button>
+            <button class="toolbar-button" id="menuButton" title="&#33756;&#21333;">&#9776; &#33756;&#21333;</button>
+          </div>
+        </header>
+
+        <section class="surface" id="surface"></section>
+      </main>
+    </div>
+
+    <section class="mini-strip" id="miniStrip" hidden>
+      <header class="mini-header">
+        <span>&#8801; &#20415;&#31614;&#24212;&#29992;</span>
+        <button type="button" id="miniExpandButton">&#9633; &#23637;&#24320;</button>
+      </header>
+      <div class="mini-body" id="miniBody"></div>
+      <footer class="mini-actions">
+        <button type="button" data-mini-create="note">+ &#20415;&#31614;</button>
+        <button type="button" data-mini-create="todo">+ &#24453;&#21150;</button>
+      </footer>
+    </section>
+  </div>
+
+  <div class="popover" id="colorPopover" hidden>
+    <div class="swatches" id="colorSwatches"></div>
+    <input class="color-picker-input" id="freeColorInput" type="color">
+  </div>
+
+  <div class="menu" id="appMenu" hidden>
+    <button type="button" data-menu-action="pick-color">&#36873;&#25321;&#39068;&#33394;</button>
+    <div class="menu-divider"></div>
+    <button type="button" data-menu-action="export-txt">&#23548;&#20986;&#20026; .txt</button>
+    <button type="button" data-menu-action="export-md">&#23548;&#20986;&#20026; .md</button>
+    <div class="menu-divider"></div>
+    <button type="button" data-menu-action="shortcuts">&#24555;&#25463;&#38190;&#35828;&#26126;</button>
+    <button type="button" data-menu-action="clear-date-filter">&#28165;&#38500;&#26085;&#21382;&#31579;&#36873;</button>
+  </div>
+
+  <div class="menu" id="editorMenu" hidden>
+    <button type="button" data-editor-action="insert-image">&#25554;&#20837;&#22270;&#29255;</button>
+    <button type="button" data-editor-action="paste-image">&#31896;&#36148;&#22270;&#29255;</button>
+  </div>
+
+  <div class="menu" id="todoMenu" hidden>
+    <button type="button" data-todo-action="edit">&#32534;&#36753;&#25991;&#23383;</button>
+    <button type="button" data-todo-action="toggle-abandon">&#26631;&#35760;&#25110;&#21462;&#28040;&#25918;&#24323;</button>
+    <button type="button" data-todo-action="restore">&#24674;&#22797;&#20026;&#36827;&#34892;&#20013;</button>
+    <div class="menu-divider"></div>
+    <button type="button" data-todo-action="delete">&#21024;&#38500;</button>
+  </div>
+
+  <dialog id="createDialog">
+    <form class="dialog-card" id="createForm" method="dialog">
+      <div class="dialog-title" id="createDialogTitle">&#26032;&#24314;&#26465;&#30446;</div>
+      <div class="dialog-copy" id="createDialogCopy">&#22312;&#24403;&#21069;&#20998;&#31867;&#19979;&#26032;&#24314;&#19968;&#20010;&#26465;&#30446;&#12290;</div>
+      <div class="field">
+        <label for="createNameInput">&#21517;&#31216;</label>
+        <input id="createNameInput" type="text" maxlength="40" required>
+      </div>
+      <div class="field">
+        <label>&#39068;&#33394;</label>
+        <div class="quick-colors" id="createQuickColors"></div>
+      </div>
+      <input id="createColorInput" type="color" value="#ffb3c6" hidden>
+      <div class="dialog-actions">
+        <button type="button" id="createCancelButton">&#21462;&#28040;</button>
+        <button class="primary" type="submit">&#21019;&#24314;</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog">
+    <div class="dialog-card">
+      <div class="dialog-title" id="confirmTitle">&#30830;&#35748;&#21024;&#38500;</div>
+      <div class="dialog-copy" id="confirmCopy"></div>
+      <div class="dialog-actions">
+        <button type="button" id="confirmCancelButton">&#21462;&#28040;</button>
+        <button class="primary" type="button" id="confirmOkButton">&#21024;&#38500;</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="searchDialog">
+    <form class="dialog-card" id="searchForm" method="dialog">
+      <div class="dialog-title">&#25628;&#32034;</div>
+      <div class="dialog-copy">&#25353;&#20415;&#31614;&#21517;&#31216;&#12289;&#20869;&#23481;&#25110;&#24453;&#21150;&#25991;&#23383;&#36827;&#34892;&#25628;&#32034;&#12290;</div>
+      <div class="field">
+        <label for="searchInputField">&#20851;&#38190;&#23383;</label>
+        <input id="searchInputField" type="text" maxlength="80">
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="searchClearButton">&#28165;&#31354;</button>
+        <button type="button" id="searchCancelButton">&#21462;&#28040;</button>
+        <button class="primary" type="submit">&#30830;&#23450;</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input id="imageInput" type="file" accept="image/*" hidden>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = "stickyapp_data";
+      const LEGACY_KEY = "desktop-sticky-note-data-v1";
+      const UI_KEY = "stickyapp_ui";
+      const COLORS = [
+        "#FFB3C6", "#FFF3B0", "#C1F0C1", "#B3D9FF",
+        "#E8C6FF", "#FFD9B3", "#FFFFFF", "#F0F0F0",
+        "#D4F1F4", "#FFDDE1", "#FFF9C4", "#E8F5E9"
+      ];
+      const WEEKDAYS = ["\u4e00", "\u4e8c", "\u4e09", "\u56db", "\u4e94", "\u516d", "\u65e5"];
+
+      const els = {
+        calendarCard: document.getElementById("calendarCard"),
+        noteGroupBody: document.getElementById("noteGroupBody"),
+        todoGroupBody: document.getElementById("todoGroupBody"),
+        toolbarTitle: document.getElementById("toolbarTitle"),
+        searchButton: document.getElementById("searchButton"),
+        newButton: document.getElementById("newButton"),
+        pinButton: document.getElementById("pinButton"),
+        deleteButton: document.getElementById("deleteButton"),
+        miniButton: document.getElementById("miniButton"),
+        menuButton: document.getElementById("menuButton"),
+        surface: document.getElementById("surface"),
+        miniStrip: document.getElementById("miniStrip"),
+        miniBody: document.getElementById("miniBody"),
+        miniExpandButton: document.getElementById("miniExpandButton"),
+        colorPopover: document.getElementById("colorPopover"),
+        colorSwatches: document.getElementById("colorSwatches"),
+        freeColorInput: document.getElementById("freeColorInput"),
+        appMenu: document.getElementById("appMenu"),
+        editorMenu: document.getElementById("editorMenu"),
+        todoMenu: document.getElementById("todoMenu"),
+        createDialog: document.getElementById("createDialog"),
+        createForm: document.getElementById("createForm"),
+        createDialogTitle: document.getElementById("createDialogTitle"),
+        createDialogCopy: document.getElementById("createDialogCopy"),
+        createNameInput: document.getElementById("createNameInput"),
+        createColorInput: document.getElementById("createColorInput"),
+        createQuickColors: document.getElementById("createQuickColors"),
+        createCancelButton: document.getElementById("createCancelButton"),
+        confirmDialog: document.getElementById("confirmDialog"),
+        confirmTitle: document.getElementById("confirmTitle"),
+        confirmCopy: document.getElementById("confirmCopy"),
+        confirmCancelButton: document.getElementById("confirmCancelButton"),
+        confirmOkButton: document.getElementById("confirmOkButton"),
+        searchDialog: document.getElementById("searchDialog"),
+        searchForm: document.getElementById("searchForm"),
+        searchInputField: document.getElementById("searchInputField"),
+        searchClearButton: document.getElementById("searchClearButton"),
+        searchCancelButton: document.getElementById("searchCancelButton"),
+        imageInput: document.getElementById("imageInput")
+      };
+
+      const state = {
+        data: loadData(),
+        ui: loadUi(),
+        editorTimer: null,
+        todoMenuContext: null,
+        createType: "note",
+        confirmAction: null,
+        dragTodoId: null,
+        miniPreviewNoteId: null
+      };
+
+      boot();
+
+      function boot() {
+        seedColorUi();
+        normalizeData();
+        ensureSelection();
+        bindEvents();
+        render();
+        if (state.ui.activeMode === "mini") {
+          requestAnimationFrame(() => switchToMiniMode());
+        }
+      }
+
+      function defaultData() {
+        const now = Date.now();
+        const noteId = uid("note");
+        const listId = uid("list");
+        return {
+          notes: [
+            {
+              id: noteId,
+              name: "\u4fbf\u7b7e 1",
+              color: "#FFB3C6",
+              content: "<p>\u5355\u51fb\u8fdb\u5165\u7f16\u8f91\u3002</p><p>\u53f3\u952e\u53ef\u4ee5\u63d2\u5165\u56fe\u7247\uff0c\u4e5f\u53ef\u4ee5\u76f4\u63a5\u7c98\u8d34\u526a\u8d34\u677f\u56fe\u7247\u3002</p>",
+              pinned: false,
+              createdAt: now,
+              updatedAt: now
+            }
+          ],
+          todoLists: [
+            {
+              id: listId,
+              name: "\u5f85\u529e 1",
+              color: "#FFF3B0",
+              pinned: false,
+              createdAt: now,
+              updatedAt: now,
+              items: [
+                {
+                  id: uid("item"),
+                  text: "\u8f93\u5165\u5185\u5bb9\u540e\u6309 Enter \u6dfb\u52a0\u5f85\u529e",
+                  done: false,
+                  abandoned: false,
+                  order: 0,
+                  createdAt: now
+                }
+              ]
+            }
+          ]
+        };
+      }
+
+      function defaultUi() {
+        return {
+          activeType: "note",
+          activeId: "",
+          notesExpanded: true,
+          todoListsExpanded: true,
+          calendarMonth: formatMonthKey(new Date()),
+          filterDate: "",
+          searchQuery: "",
+          archiveExpanded: false,
+          renaming: false,
+          activeMode: "full",
+          miniPosition: null,
+          fullWindowBounds: null
+        };
+      }
+
+      function loadData() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            return JSON.parse(raw);
+          }
+          const legacy = localStorage.getItem(LEGACY_KEY);
+          if (!legacy) {
+            return defaultData();
+          }
+          return migrateLegacyData(JSON.parse(legacy));
+        } catch (error) {
+          console.error("Failed to load data:", error);
+          return defaultData();
+        }
+      }
+
+      function loadUi() {
+        try {
+          const raw = localStorage.getItem(UI_KEY);
+          return raw ? { ...defaultUi(), ...JSON.parse(raw) } : defaultUi();
+        } catch (error) {
+          console.error("Failed to load ui:", error);
+          return defaultUi();
+        }
+      }
+
+      function migrateLegacyData(legacy) {
+        const notes = Array.isArray(legacy?.notes) ? legacy.notes : [];
+        const todos = Array.isArray(legacy?.todos) ? legacy.todos : [];
+        const todoGroups = new Map();
+
+        notes.forEach((note, index) => {
+          if (note.category === "Todo" || note.category === "todo" || note.category === "待办事项") {
+            todoGroups.set(note.id || uid("list"), {
+              id: note.id || uid("list"),
+              name: note.title || note.name || `\u5f85\u529e ${index + 1}`,
+              color: normalizeColor(note.color || "#FFF3B0", "#FFF3B0"),
+              pinned: Boolean(note.pinned),
+              createdAt: Number(note.createdAt) || Date.now(),
+              updatedAt: Number(note.updatedAt) || Number(note.createdAt) || Date.now(),
+              items: []
+            });
+          }
+        });
+
+        todos.forEach((item, index) => {
+          const listId = item.noteId || uid("list");
+          if (!todoGroups.has(listId)) {
+            todoGroups.set(listId, {
+              id: listId,
+              name: `Todo ${todoGroups.size + 1}`,
+              color: "#FFF3B0",
+              pinned: false,
+              createdAt: Number(item.createdAt) || Date.now(),
+              updatedAt: Number(item.createdAt) || Date.now(),
+              items: []
+            });
+          }
+          todoGroups.get(listId).items.push({
+            id: item.id || uid("item"),
+            text: String(item.text || `\u4efb\u52a1 ${index + 1}`),
+            done: Boolean(item.done),
+            abandoned: Boolean(item.abandoned),
+            order: Number.isFinite(item.order) ? item.order : index,
+            createdAt: Number(item.createdAt) || Date.now()
+          });
+        });
+
+        return {
+          notes: notes
+            .filter((note) => !(note.category === "Todo" || note.category === "todo" || note.category === "待办事项"))
+            .map((note, index) => ({
+              id: note.id || uid("note"),
+              name: note.title || note.name || `\u4fbf\u7b7e ${index + 1}`,
+              color: normalizeColor(note.color || "#FFB3C6", "#FFB3C6"),
+              content: typeof note.content === "string" ? note.content : "",
+              pinned: Boolean(note.pinned),
+              createdAt: Number(note.createdAt) || Date.now(),
+              updatedAt: Number(note.updatedAt) || Number(note.createdAt) || Date.now()
+            })),
+          todoLists: [...todoGroups.values()].map((list) => ({
+            ...list,
+            items: list.items.sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
+          }))
+        };
+      }
+
+      function normalizeData() {
+        if (!Array.isArray(state.data.notes)) {
+          state.data.notes = [];
+        }
+        if (!Array.isArray(state.data.todoLists)) {
+          state.data.todoLists = [];
+        }
+
+        state.data.notes = state.data.notes.map((note, index) => ({
+          id: note.id || uid("note"),
+          name: String(note.name || `\u4fbf\u7b7e ${index + 1}`),
+          color: normalizeColor(note.color || "#FFB3C6", "#FFB3C6"),
+          content: typeof note.content === "string" ? note.content : "",
+          pinned: Boolean(note.pinned),
+          createdAt: Number(note.createdAt) || Date.now(),
+          updatedAt: Number(note.updatedAt) || Number(note.createdAt) || Date.now()
+        }));
+
+        state.data.todoLists = state.data.todoLists.map((list, index) => ({
+          id: list.id || uid("list"),
+          name: String(list.name || `\u5f85\u529e ${index + 1}`),
+          color: normalizeColor(list.color || "#FFF3B0", "#FFF3B0"),
+          pinned: Boolean(list.pinned),
+          createdAt: Number(list.createdAt) || Date.now(),
+          updatedAt: Number(list.updatedAt) || Number(list.createdAt) || Date.now(),
+          items: normalizeTodoItems(list.items)
+        }));
+
+        persistData();
+      }
+
+      function normalizeTodoItems(items) {
+        if (!Array.isArray(items)) {
+          return [];
+        }
+        return items.map((item, index) => ({
+          id: item.id || uid("item"),
+          text: String(item.text || `\u4efb\u52a1 ${index + 1}`),
+          done: Boolean(item.done),
+          abandoned: Boolean(item.abandoned),
+          order: Number.isFinite(item.order) ? item.order : index,
+          createdAt: Number(item.createdAt) || Date.now()
+        }));
+      }
+
+      function bindEvents() {
+        els.calendarCard.addEventListener("click", onCalendarClick);
+        els.noteGroupBody.addEventListener("click", onSidebarItemClick);
+        els.todoGroupBody.addEventListener("click", onSidebarItemClick);
+
+        document.querySelectorAll("[data-toggle-group]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const group = button.dataset.toggleGroup;
+            const key = group === "notes" ? "notesExpanded" : "todoListsExpanded";
+            state.ui[key] = !state.ui[key];
+            persistUi();
+            renderSidebar();
+          });
+        });
+
+        document.querySelectorAll("[data-create-type]").forEach((button) => {
+          button.addEventListener("click", () => openCreateDialog(button.dataset.createType));
+        });
+
+        els.searchButton.addEventListener("click", onSearchClick);
+        els.newButton.addEventListener("click", () => openCreateDialog(getPreferredCreateType()));
+        els.pinButton.addEventListener("click", togglePinCurrent);
+        els.deleteButton.addEventListener("click", confirmDeleteCurrent);
+        els.miniButton.addEventListener("click", switchToMiniMode);
+        els.miniExpandButton.addEventListener("click", () => switchToFullMode());
+        els.miniBody.addEventListener("click", onMiniBodyClick);
+        els.miniBody.addEventListener("change", onMiniBodyChange);
+        els.miniStrip.querySelectorAll("[data-mini-create]").forEach((button) => {
+          button.addEventListener("click", () => openCreateDialog(button.dataset.miniCreate));
+        });
+        els.menuButton.addEventListener("click", (event) => togglePopup(els.appMenu, event.currentTarget.getBoundingClientRect()));
+        els.appMenu.addEventListener("click", onAppMenuClick);
+        els.editorMenu.addEventListener("click", onEditorMenuClick);
+        els.todoMenu.addEventListener("click", onTodoMenuClick);
+        els.freeColorInput.addEventListener("input", () => applyCurrentColor(els.freeColorInput.value));
+        els.createCancelButton.addEventListener("click", () => els.createDialog.close());
+        els.confirmCancelButton.addEventListener("click", () => els.confirmDialog.close());
+        els.searchCancelButton.addEventListener("click", () => els.searchDialog.close());
+        els.searchClearButton.addEventListener("click", () => {
+          els.searchInputField.value = "";
+          state.ui.searchQuery = "";
+          state.ui.renaming = false;
+          ensureSelection();
+          persistUi();
+          render();
+          els.searchDialog.close();
+        });
+        els.confirmOkButton.addEventListener("click", () => {
+          if (typeof state.confirmAction === "function") {
+            state.confirmAction();
+          }
+          state.confirmAction = null;
+          els.confirmDialog.close();
+        });
+        els.createForm.addEventListener("submit", onCreateSubmit);
+        els.searchForm.addEventListener("submit", onSearchSubmit);
+        els.imageInput.addEventListener("change", onImagePicked);
+
+        window.addEventListener("click", (event) => {
+          if (
+            event.target.closest("#colorPopover") ||
+            event.target.closest("#appMenu") ||
+            event.target.closest("#editorMenu") ||
+            event.target.closest("#todoMenu") ||
+            event.target.closest("#menuButton")
+          ) {
+            return;
+          }
+          hidePopups();
+        });
+
+        window.addEventListener("keydown", onWindowKeydown);
+        window.desktopShell?.onMiniPosition?.((position) => {
+          state.ui.miniPosition = position;
+          persistUi();
+        });
+      }
+
+      function onCalendarClick(event) {
+        const navButton = event.target.closest("[data-nav]");
+        if (navButton) {
+          state.ui.calendarMonth = shiftMonthKey(state.ui.calendarMonth, Number(navButton.dataset.nav));
+          persistUi();
+          renderCalendar();
+          return;
+        }
+        const dayButton = event.target.closest("[data-date]");
+        if (!dayButton) {
+          return;
+        }
+        const nextDate = dayButton.dataset.date;
+        state.ui.filterDate = state.ui.filterDate === nextDate ? "" : nextDate;
+        ensureSelection();
+        persistUi();
+        render();
+      }
+
+      function onSidebarItemClick(event) {
+        const deleteButton = event.target.closest("[data-delete-item]");
+        if (deleteButton) {
+          confirmDelete(deleteButton.dataset.deleteItem, deleteButton.dataset.id);
+          return;
+        }
+
+        const itemButton = event.target.closest("[data-select-item]");
+        if (!itemButton) {
+          return;
+        }
+        state.ui.activeType = itemButton.dataset.type;
+        state.ui.activeId = itemButton.dataset.id;
+        state.ui.renaming = false;
+        persistUi();
+        render();
+      }
+
+      function onSearchClick() {
+        els.searchInputField.value = state.ui.searchQuery || "";
+        els.searchDialog.showModal();
+        requestAnimationFrame(() => {
+          els.searchInputField.focus();
+          els.searchInputField.select();
+        });
+      }
+
+      function onSearchSubmit(event) {
+        event.preventDefault();
+        state.ui.searchQuery = els.searchInputField.value.trim();
+        state.ui.renaming = false;
+        ensureSelection();
+        persistUi();
+        render();
+        els.searchDialog.close();
+      }
+
+      function togglePinCurrent() {
+        const entity = getActiveEntity();
+        if (!entity) {
+          return;
+        }
+        entity.pinned = !entity.pinned;
+        entity.updatedAt = Date.now();
+        persistData();
+        renderSidebar();
+        renderToolbar();
+      }
+
+      function toggleColorPopover(event) {
+        const entity = getActiveEntity();
+        if (!entity) {
+          return;
+        }
+        els.freeColorInput.value = normalizeColor(entity.color, entity.color);
+        togglePopup(els.colorPopover, event.currentTarget.getBoundingClientRect());
+      }
+
+      function onAppMenuClick(event) {
+        const button = event.target.closest("[data-menu-action]");
+        if (!button) {
+          return;
+        }
+        const action = button.dataset.menuAction;
+        if (action === "pick-color") {
+          const entity = getActiveEntity();
+          if (entity) {
+            els.freeColorInput.value = normalizeColor(entity.color, entity.color);
+            hidePopups();
+            togglePopup(els.colorPopover, els.menuButton.getBoundingClientRect());
+          }
+          return;
+        } else if (action === "export-txt") {
+          exportCurrent("txt");
+        } else if (action === "export-md") {
+          exportCurrent("md");
+        } else if (action === "shortcuts") {
+          alert("\u5feb\u6377\u952e\nCtrl/Cmd+N\uff1a\u65b0\u5efa\nCtrl/Cmd+F\uff1a\u641c\u7d22\nDelete \u952e\uff1a\u5220\u9664\u5f53\u524d\u6761\u76ee\nCtrl/Cmd+S\uff1a\u4fdd\u5b58\u5f53\u524d\u4fbf\u7b7e");
+        } else if (action === "clear-date-filter") {
+          state.ui.filterDate = "";
+          ensureSelection();
+          persistUi();
+          render();
+        }
+        hidePopups();
+      }
+
+      function onEditorMenuClick(event) {
+        const button = event.target.closest("[data-editor-action]");
+        if (!button) {
+          return;
+        }
+        if (button.dataset.editorAction === "insert-image") {
+          els.imageInput.click();
+        } else if (button.dataset.editorAction === "paste-image") {
+          pasteImageFromClipboard();
+        }
+        hidePopups();
+      }
+
+      function onTodoMenuClick(event) {
+        const button = event.target.closest("[data-todo-action]");
+        if (!button || !state.todoMenuContext) {
+          return;
+        }
+        const { listId, itemId } = state.todoMenuContext;
+        const list = findTodoList(listId);
+        const item = list?.items.find((entry) => entry.id === itemId);
+        if (!list || !item) {
+          hidePopups();
+          return;
+        }
+
+        if (button.dataset.todoAction === "edit") {
+          const next = window.prompt("\u7f16\u8f91\u5f85\u529e\u5185\u5bb9", item.text);
+          if (next !== null && next.trim()) {
+            item.text = next.trim();
+            list.updatedAt = Date.now();
+            persistData();
+            renderSurface();
+          }
+        } else if (button.dataset.todoAction === "toggle-abandon") {
+          item.abandoned = !item.abandoned;
+          if (item.abandoned) {
+            item.done = false;
+          }
+          list.updatedAt = Date.now();
+          normalizeTodoOrder(list);
+          persistData();
+          renderSurface();
+        } else if (button.dataset.todoAction === "restore") {
+          item.done = false;
+          item.abandoned = false;
+          list.updatedAt = Date.now();
+          normalizeTodoOrder(list);
+          persistData();
+          renderSurface();
+        } else if (button.dataset.todoAction === "delete") {
+          list.items = list.items.filter((entry) => entry.id !== item.id);
+          list.updatedAt = Date.now();
+          normalizeTodoOrder(list);
+          persistData();
+          renderSurface();
+        }
+
+        hidePopups();
+      }
+
+      function onCreateSubmit(event) {
+        event.preventDefault();
+        const name = els.createNameInput.value.trim();
+        if (!name) {
+          return;
+        }
+        const defaultColor = state.createType === "note" ? "#FFB3C6" : "#FFF3B0";
+        const color = normalizeColor(els.createColorInput.value, defaultColor);
+        if (state.createType === "note") {
+          state.data.notes.unshift({
+            id: uid("note"),
+            name,
+            color,
+            content: "",
+            pinned: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          });
+          state.ui.activeType = "note";
+          state.ui.activeId = state.data.notes[0].id;
+        } else {
+          state.data.todoLists.unshift({
+            id: uid("list"),
+            name,
+            color,
+            pinned: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            items: []
+          });
+          state.ui.activeType = "todo";
+          state.ui.activeId = state.data.todoLists[0].id;
+        }
+        state.ui.renaming = false;
+        persistData();
+        persistUi();
+        els.createDialog.close();
+        render();
+      }
+
+      function onImagePicked(event) {
+        const file = event.target.files?.[0];
+        if (!file) {
+          return;
+        }
+        fileToDataUrl(file).then(insertImageAtSelection);
+        event.target.value = "";
+      }
+
+      function onWindowKeydown(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
+          event.preventDefault();
+          openCreateDialog(getPreferredCreateType());
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+          event.preventDefault();
+          onSearchClick();
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          flushEditor();
+          persistData();
+          return;
+        }
+        if (event.key === "Delete") {
+          const active = document.activeElement;
+          const isEditable = ["INPUT", "TEXTAREA"].includes(active?.tagName) || active?.isContentEditable;
+          if (!isEditable) {
+            confirmDeleteCurrent();
+          }
+        }
+        if (event.key === "Escape") {
+          hidePopups();
+        }
+      }
+
+      function render() {
+        renderMode();
+        renderSidebar();
+        renderToolbar();
+        renderSurface();
+        renderCalendar();
+        renderMiniStrip();
+      }
+
+      function renderMode() {
+        const isMini = state.ui.activeMode === "mini";
+        document.querySelector(".app").classList.toggle("mini", isMini);
+        els.miniStrip.hidden = !isMini;
+      }
+
+      function switchToMiniMode() {
+        state.ui.activeMode = "mini";
+        state.ui.renaming = false;
+        hidePopups();
+        persistUi();
+        renderMode();
+        renderMiniStrip();
+        requestAnimationFrame(() => {
+          const height = getMiniHeight();
+          window.desktopShell?.switchToMini?.(height);
+        });
+      }
+
+      function switchToFullMode(type, id) {
+        if (type && id) {
+          state.ui.activeType = type;
+          state.ui.activeId = id;
+          state.ui.renaming = false;
+        }
+        state.ui.activeMode = "full";
+        persistUi();
+        render();
+        window.desktopShell?.switchToFull?.({
+          fullWindowBounds: state.ui.fullWindowBounds
+        });
+      }
+
+      function renderMiniStrip() {
+        if (state.ui.activeMode !== "mini") {
+          return;
+        }
+        const activeEntity = getActiveEntity();
+        const miniColor = activeEntity?.color || "#FFF3B0";
+        els.miniStrip.style.background = `linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.14)), ${miniColor}`;
+        const notes = getSidebarNotes();
+        const todoLists = getSidebarTodoLists();
+        els.miniBody.innerHTML = `
+          <section class="mini-section">
+            <div class="mini-section-title"><span>&#128221; &#20415;&#31614;</span><span>${notes.length}</span></div>
+            ${notes.length ? notes.map(renderMiniNote).join("") : '<div class="mini-empty">&#26242;&#26080;&#20415;&#31614;</div>'}
+          </section>
+          <section class="mini-section">
+            <div class="mini-section-title"><span>&#9989; &#24453;&#21150;</span><span>${todoLists.length}</span></div>
+            ${todoLists.length ? todoLists.map(renderMiniTodoList).join("") : '<div class="mini-empty">&#26242;&#26080;&#24453;&#21150;</div>'}
+          </section>
+        `;
+        requestAnimationFrame(() => {
+          window.desktopShell?.resizeMini?.(getMiniHeight());
+        });
+      }
+
+      function renderMiniNote(note) {
+        const preview = state.miniPreviewNoteId === note.id
+          ? `<div class="mini-preview">${escapeHtml(getNoteTextPreview(note))}</div>`
+          : "";
+        return `
+          <div class="mini-row">
+            <span class="mini-dot" style="background:${escapeHtml(note.color)}"></span>
+            <button class="mini-name" type="button" data-mini-preview-note="${escapeHtml(note.id)}" title="${escapeHtml(note.name)}">${escapeHtml(note.name)}</button>
+            <button class="mini-open" type="button" data-mini-open-type="note" data-mini-open-id="${escapeHtml(note.id)}">&#8594;</button>
+          </div>
+          ${preview}
+        `;
+      }
+
+      function renderMiniTodoList(list) {
+        const activeItems = getTodoItems(list, "active");
+        const visibleItems = activeItems.slice(0, 5);
+        const rest = activeItems.length - visibleItems.length;
+        return `
+          <div class="mini-todo">
+            <button class="mini-todo-head" type="button" data-mini-open-type="todo" data-mini-open-id="${escapeHtml(list.id)}">
+              <span class="mini-dot" style="background:${escapeHtml(list.color)}"></span>
+              <span>${escapeHtml(list.name)}</span>
+            </button>
+            ${visibleItems.length ? visibleItems.map((item) => `
+              <label class="mini-task">
+                <input type="checkbox" data-mini-toggle-list="${escapeHtml(list.id)}" data-mini-toggle-item="${escapeHtml(item.id)}">
+                <span>${escapeHtml(item.text)}</span>
+              </label>
+            `).join("") : '<div class="mini-empty">&#27809;&#26377;&#26410;&#23436;&#25104;&#30340;&#24453;&#21150;</div>'}
+            ${rest > 0 ? `<button class="mini-more" type="button" data-mini-open-type="todo" data-mini-open-id="${escapeHtml(list.id)}">&#36824;&#26377; ${rest} &#39033;&#65292;&#28857;&#20987;&#25171;&#24320;</button>` : ""}
+          </div>
+        `;
+      }
+
+      function onMiniBodyClick(event) {
+        const previewButton = event.target.closest("[data-mini-preview-note]");
+        if (previewButton) {
+          state.miniPreviewNoteId = state.miniPreviewNoteId === previewButton.dataset.miniPreviewNote
+            ? null
+            : previewButton.dataset.miniPreviewNote;
+          renderMiniStrip();
+          return;
+        }
+        const openButton = event.target.closest("[data-mini-open-type]");
+        if (openButton) {
+          switchToFullMode(openButton.dataset.miniOpenType, openButton.dataset.miniOpenId);
+        }
+      }
+
+      function onMiniBodyChange(event) {
+        const checkbox = event.target.closest("[data-mini-toggle-item]");
+        if (!checkbox) {
+          return;
+        }
+        const list = findTodoList(checkbox.dataset.miniToggleList);
+        const item = list?.items.find((entry) => entry.id === checkbox.dataset.miniToggleItem);
+        if (!list || !item) {
+          return;
+        }
+        item.done = checkbox.checked;
+        item.abandoned = false;
+        list.updatedAt = Date.now();
+        normalizeTodoOrder(list);
+        persistData();
+        renderMiniStrip();
+      }
+
+      function getMiniHeight() {
+        return Math.max(200, Math.min(window.screen.availHeight - 80, els.miniStrip.scrollHeight || 500));
+      }
+
+      function renderSidebar() {
+        const noteGroup = document.querySelector('[data-group="notes"]');
+        const todoGroup = document.querySelector('[data-group="todoLists"]');
+        noteGroup.classList.toggle("collapsed", !state.ui.notesExpanded);
+        todoGroup.classList.toggle("collapsed", !state.ui.todoListsExpanded);
+        els.noteGroupBody.innerHTML = renderSidebarItems(getSidebarNotes(), "note");
+        els.todoGroupBody.innerHTML = renderSidebarItems(getSidebarTodoLists(), "todo");
+      }
+
+      function renderSidebarItems(items, type) {
+        if (!items.length) {
+          return '<div class="item-row"><span class="item-name" style="grid-column:1 / span 3; color:#999;">&#26242;&#26080;&#26465;&#30446;</span></div>';
+        }
+        return items.map((item) => `
+          <div class="item-row ${state.ui.activeType === type && state.ui.activeId === item.id ? "active" : ""}">
+            <span class="item-color" style="background:${escapeHtml(item.color)}"></span>
+            <button class="item-name" type="button" data-select-item="1" data-type="${type}" data-id="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">${item.pinned ? "&#128204; " : ""}${escapeHtml(item.name)}</button>
+            <button class="item-delete" type="button" data-delete-item="${type}" data-id="${escapeHtml(item.id)}" title="&#21024;&#38500;">x</button>
+          </div>
+        `).join("");
+      }
+
+      function renderToolbar() {
+        const entity = getActiveEntity();
+        const label = state.ui.activeType === "todo" ? "\u5f85\u529e\u4e8b\u9879" : "\u4fbf\u7b7e";
+        els.toolbarTitle.innerHTML = entity
+          ? renderToolbarTitleEditor(entity, label)
+          : "<span class=\"toolbar-path\">[&#26410;&#36873;&#20013;]</span>";
+
+        const enabled = Boolean(entity);
+        els.pinButton.disabled = !enabled;
+        els.deleteButton.disabled = !enabled;
+        els.pinButton.textContent = entity?.pinned ? "\uD83D\uDCCC \u5DF2\u7F6E\u9876" : "\uD83D\uDCCC \u7F6E\u9876";
+
+        const titleButton = document.getElementById("toolbarTitleButton");
+        if (titleButton) {
+          titleButton.addEventListener("click", startRenamingCurrent);
+        }
+
+        const titleInput = document.getElementById("toolbarTitleInput");
+        if (titleInput) {
+          titleInput.addEventListener("blur", finishRenamingCurrent);
+          titleInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              titleInput.blur();
+            }
+          });
+        }
+      }
+
+      function renderToolbarTitleEditor(entity, label) {
+        if (!state.ui.renaming) {
+          return `<button id="toolbarTitleButton" type="button" title="&#37325;&#21629;&#21517;">[${escapeHtml(label)}/${escapeHtml(entity.name)}]</button>`;
+        }
+        return `<span class="toolbar-path">[${escapeHtml(label)}/</span><input id="toolbarTitleInput" type="text" maxlength="40" value="${escapeHtml(entity.name)}"><span class="toolbar-path">]</span>`;
+      }
+
+      function renderSurface() {
+        const entity = getActiveEntity();
+        if (!entity) {
+          els.surface.innerHTML = `
+            <div class="content-panel" style="--panel-color:#f7f1e4;">
+              <div class="empty-state">&#24403;&#21069;&#31579;&#36873;&#19979;&#27809;&#26377;&#21487;&#26174;&#31034;&#30340;&#20869;&#23481;&#12290;<br>&#28857;&#20987; + &#26032;&#24314;&#19968;&#20010;&#20415;&#31614;&#25110;&#24453;&#21150;&#21015;&#34920;&#12290;</div>
+            </div>
+          `;
+          return;
+        }
+
+        if (state.ui.activeType === "todo") {
+          renderTodoPanel(entity);
+        } else {
+          renderNotePanel(entity);
+        }
+      }
+
+      function renderNotePanel(note) {
+        els.surface.innerHTML = `
+          <article class="content-panel" style="--panel-color:${escapeHtml(note.color)};">
+            <header class="panel-head">
+              <div class="panel-badges">
+                <span class="badge">${note.pinned ? "\u5df2\u7f6e\u9876" : "\u666e\u901a"}</span>
+              </div>
+              <div class="panel-badges">
+                <span class="badge">\u66f4\u65b0\u4e8e ${escapeHtml(formatDateTime(note.updatedAt))}</span>
+              </div>
+            </header>
+            <div class="note-body">
+              <div
+                class="note-editor ${hasEditorContent(note.content) ? "" : "is-empty"}"
+                id="noteEditor"
+                contenteditable="true"
+                spellcheck="true"
+                data-placeholder="&#21333;&#20987;&#36827;&#20837;&#32534;&#36753;&#65292;&#21491;&#38190;&#21487;&#25554;&#20837;&#22270;&#29255;&#25110;&#31896;&#36148;&#21098;&#36148;&#26495;&#22270;&#29255;&#12290;"
+              >${note.content || ""}</div>
+              <div class="note-footer">&#21019;&#24314;&#20110; ${escapeHtml(formatDate(note.createdAt))}</div>
+            </div>
+          </article>
+        `;
+
+        const editor = document.getElementById("noteEditor");
+        editor.addEventListener("input", () => {
+          note.content = editor.innerHTML;
+          note.updatedAt = Date.now();
+          editor.classList.toggle("is-empty", !hasEditorContent(note.content));
+          clearTimeout(state.editorTimer);
+          state.editorTimer = setTimeout(() => {
+            flushEditor();
+            persistData();
+            renderSidebar();
+          }, 500);
+        });
+        editor.addEventListener("paste", onEditorPasteImage);
+        editor.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          togglePopup(els.editorMenu, { left: event.clientX, bottom: event.clientY });
+        });
+      }
+
+      function renderTodoPanel(list) {
+        const active = getTodoItems(list, "active");
+        const archived = getTodoItems(list, "archived");
+
+        els.surface.innerHTML = `
+          <article class="content-panel" style="--panel-color:${escapeHtml(list.color)};">
+            <header class="panel-head">
+              <div class="panel-badges">
+                <span class="badge">&#24453;&#21150;&#21015;&#34920;</span>
+                <span class="badge">${active.length} &#39033;&#36827;&#34892;&#20013;</span>
+              </div>
+              <div class="panel-badges">
+                <span class="badge">&#21019;&#24314;&#20110; ${escapeHtml(formatDate(list.createdAt))}</span>
+              </div>
+            </header>
+            <div class="todo-body">
+              <div class="todo-scroller">
+                <ul class="todo-list" id="todoActiveList">${renderTodoItems(active)}</ul>
+              </div>
+              <form class="todo-add" id="todoAddForm">
+                <input id="todoAddInput" type="text" maxlength="240" placeholder="&#28155;&#21152;&#26032;&#24453;&#21150;&#8230;">
+                <button type="submit">+</button>
+              </form>
+              <section class="archive ${state.ui.archiveExpanded ? "expanded" : ""}">
+                <button class="archive-toggle" id="archiveToggle" type="button">
+                  <span>&#24050;&#23436;&#25104; / &#24050;&#25918;&#24323; (${archived.length})</span>
+                  <span>${state.ui.archiveExpanded ? "v" : ">"}</span>
+                </button>
+                <div class="archive-content">
+                  <ul class="archive-list" id="todoArchiveList">${renderTodoItems(archived)}</ul>
+                </div>
+              </section>
+            </div>
+          </article>
+        `;
+
+        const addForm = document.getElementById("todoAddForm");
+        const addInput = document.getElementById("todoAddInput");
+        addForm.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const text = addInput.value.trim();
+          if (!text) {
+            return;
+          }
+          addTodoItem(list, text);
+          addInput.value = "";
+        });
+
+        document.getElementById("archiveToggle").addEventListener("click", () => {
+          state.ui.archiveExpanded = !state.ui.archiveExpanded;
+          persistUi();
+          renderSurface();
+        });
+
+        bindTodoListEvents(document.getElementById("todoActiveList"), list);
+        bindTodoListEvents(document.getElementById("todoArchiveList"), list);
+      }
+
+      function renderTodoItems(items) {
+        if (!items.length) {
+          return '<li class="todo-item"><span class="todo-text" style="grid-column:1 / span 3; color:#888;">&#36825;&#37324;&#26242;&#26102;&#36824;&#26159;&#31354;&#30340;&#12290;</span></li>';
+        }
+        return items.map((item) => `
+          <li class="todo-item ${item.done ? "done" : ""} ${item.abandoned ? "abandoned" : ""}" data-item-id="${escapeHtml(item.id)}" draggable="${!item.done && !item.abandoned}">
+            <input class="todo-checkbox" type="checkbox" ${item.done ? "checked" : ""} ${item.abandoned ? "disabled" : ""} data-check-id="${escapeHtml(item.id)}">
+            <span class="todo-text" data-text-id="${escapeHtml(item.id)}">${escapeHtml(item.text)}</span>
+            ${item.done ? '<span class="todo-tag">&#24050;&#23436;&#25104;</span>' : item.abandoned ? '<span class="todo-tag">&#24050;&#25918;&#24323;</span>' : '<span class="todo-tag">&#36827;&#34892;&#20013;</span>'}
+          </li>
+        `).join("");
+      }
+
+      function bindTodoListEvents(listEl, list) {
+        listEl.addEventListener("change", (event) => {
+          const checkbox = event.target.closest("[data-check-id]");
+          if (!checkbox) {
+            return;
+          }
+          const item = list.items.find((entry) => entry.id === checkbox.dataset.checkId);
+          if (!item) {
+            return;
+          }
+          item.done = checkbox.checked;
+          if (item.done) {
+            item.abandoned = false;
+          }
+          list.updatedAt = Date.now();
+          normalizeTodoOrder(list);
+          persistData();
+          renderSurface();
+        });
+
+        listEl.addEventListener("dblclick", (event) => {
+          const textEl = event.target.closest("[data-text-id]");
+          if (!textEl) {
+            return;
+          }
+          const item = list.items.find((entry) => entry.id === textEl.dataset.textId);
+          if (!item) {
+            return;
+          }
+          const next = window.prompt("\u7f16\u8f91\u5f85\u529e\u5185\u5bb9", item.text);
+          if (next !== null && next.trim()) {
+            item.text = next.trim();
+            list.updatedAt = Date.now();
+            persistData();
+            renderSurface();
+          }
+        });
+
+        listEl.addEventListener("contextmenu", (event) => {
+          const row = event.target.closest("[data-item-id]");
+          if (!row) {
+            return;
+          }
+          event.preventDefault();
+          state.todoMenuContext = { listId: list.id, itemId: row.dataset.itemId };
+          const toggleBtn = els.todoMenu.querySelector('[data-todo-action="toggle-abandon"]');
+          const restoreBtn = els.todoMenu.querySelector('[data-todo-action="restore"]');
+          const item = list.items.find((entry) => entry.id === row.dataset.itemId);
+          toggleBtn.textContent = item?.abandoned ? "\u53d6\u6d88\u5df2\u653e\u5f03" : "\u6807\u8bb0\u4e3a\u5df2\u653e\u5f03";
+          restoreBtn.style.display = item && (item.done || item.abandoned) ? "block" : "none";
+          togglePopup(els.todoMenu, { left: event.clientX, bottom: event.clientY });
+        });
+
+        listEl.addEventListener("dragstart", (event) => {
+          const row = event.target.closest("[data-item-id]");
+          if (!row) {
+            return;
+          }
+          state.dragTodoId = row.dataset.itemId;
+          row.classList.add("dragging");
+        });
+
+        listEl.addEventListener("dragend", (event) => {
+          const row = event.target.closest("[data-item-id]");
+          if (row) {
+            row.classList.remove("dragging");
+          }
+          state.dragTodoId = null;
+        });
+
+        listEl.addEventListener("dragover", (event) => {
+          event.preventDefault();
+        });
+
+        listEl.addEventListener("drop", (event) => {
+          event.preventDefault();
+          if (!state.dragTodoId) {
+            return;
+          }
+          const targetId = event.target.closest("[data-item-id]")?.dataset.itemId || "";
+          reorderTodoItems(list, state.dragTodoId, targetId);
+        });
+      }
+
+      function renderCalendar() {
+        const month = parseMonthKey(state.ui.calendarMonth);
+        const today = formatDateKey(new Date());
+        const filterDate = state.ui.filterDate;
+        const usedDates = new Set([
+          ...state.data.notes.map((item) => formatDateKey(item.createdAt)),
+          ...state.data.todoLists.map((item) => formatDateKey(item.createdAt))
+        ]);
+
+        const first = new Date(month.getFullYear(), month.getMonth(), 1);
+        const firstWeekday = (first.getDay() + 6) % 7;
+        const grid = [];
+        for (let i = 0; i < 42; i += 1) {
+          const day = new Date(first);
+          day.setDate(i - firstWeekday + 1);
+          const dateKey = formatDateKey(day);
+          const inMonth = day.getMonth() === month.getMonth();
+          const classes = [
+            "calendar-day",
+            inMonth ? "" : "muted",
+            dateKey === today ? "today" : "",
+            dateKey === filterDate ? "selected" : "",
+            usedDates.has(dateKey) ? "has-data" : ""
+          ].filter(Boolean).join(" ");
+          grid.push(`<button class="${classes}" type="button" data-date="${dateKey}">${day.getDate()}</button>`);
+        }
+
+        els.calendarCard.innerHTML = `
+          <div class="calendar-header">
+            <div class="calendar-title">${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}</div>
+            <div class="calendar-nav">
+              <button type="button" data-nav="-1"><</button>
+              <button type="button" data-nav="1">></button>
+            </div>
+          </div>
+          <div class="calendar-weekdays">${WEEKDAYS.map((day) => `<div class="calendar-weekday">${day}</div>`).join("")}</div>
+          <div class="calendar-grid">${grid.join("")}</div>
+          <div class="calendar-filter-note">${filterDate ? `\u5f53\u524d\u7b5b\u9009\uff1a${filterDate}` : "\u70b9\u51fb\u65e5\u671f\u7b5b\u9009\u5f53\u65e5\u521b\u5efa\u7684\u5185\u5bb9\u3002"}</div>
+        `;
+      }
+
+      function startRenamingCurrent() {
+        if (!getActiveEntity()) {
+          return;
+        }
+        state.ui.renaming = true;
+        renderToolbar();
+        const input = document.getElementById("toolbarTitleInput");
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+
+      function finishRenamingCurrent(event) {
+        const entity = getActiveEntity();
+        if (!entity) {
+          return;
+        }
+        const nextName = event.target.value.trim();
+        entity.name = nextName || getFallbackName(state.ui.activeType);
+        entity.updatedAt = Date.now();
+        state.ui.renaming = false;
+        persistData();
+        renderToolbar();
+        renderSidebar();
+      }
+
+      function openCreateDialog(type) {
+        state.createType = type;
+        const count = type === "note" ? state.data.notes.length + 1 : state.data.todoLists.length + 1;
+        els.createDialogTitle.textContent = type === "note" ? "\u65b0\u5efa\u4fbf\u7b7e" : "\u65b0\u5efa\u5f85\u529e\u5217\u8868";
+        els.createDialogCopy.textContent = type === "note" ? "\u521b\u5efa\u4e00\u4e2a\u65b0\u7684\u5bcc\u6587\u672c\u4fbf\u7b7e\u3002" : "\u521b\u5efa\u4e00\u4e2a\u65b0\u7684\u5f85\u529e\u4e8b\u9879\u5217\u8868\u3002";
+        els.createNameInput.value = type === "note" ? `\u4fbf\u7b7e ${count}` : `\u5f85\u529e ${count}`;
+        els.createColorInput.value = type === "note" ? "#ffb3c6" : "#fff3b0";
+        highlightCreateColor(els.createColorInput.value);
+        els.createDialog.showModal();
+        requestAnimationFrame(() => {
+          els.createNameInput.focus();
+          els.createNameInput.select();
+        });
+      }
+
+      function seedColorUi() {
+        els.colorSwatches.innerHTML = COLORS.map((color) => `
+          <button class="swatch" type="button" data-color="${color}" style="background:${color};" title="${color}"></button>
+        `).join("");
+        els.createQuickColors.innerHTML = COLORS.map((color) => `
+          <button class="quick-color" type="button" data-create-color="${color}" style="background:${color};" title="${color}"></button>
+        `).join("");
+
+        els.colorSwatches.addEventListener("click", (event) => {
+          const swatch = event.target.closest("[data-color]");
+          if (!swatch) {
+            return;
+          }
+          applyCurrentColor(swatch.dataset.color);
+        });
+
+        els.createQuickColors.addEventListener("click", (event) => {
+          const swatch = event.target.closest("[data-create-color]");
+          if (!swatch) {
+            return;
+          }
+          els.createColorInput.value = swatch.dataset.createColor;
+          highlightCreateColor(swatch.dataset.createColor);
+        });
+      }
+
+      function highlightCreateColor(color) {
+        const normalized = normalizeColor(color, "#FFB3C6").toUpperCase();
+        els.createQuickColors.querySelectorAll("[data-create-color]").forEach((button) => {
+          button.style.outline = button.dataset.createColor.toUpperCase() === normalized ? "2px solid #222" : "none";
+        });
+      }
+
+      function applyCurrentColor(color) {
+        const entity = getActiveEntity();
+        if (!entity) {
+          return;
+        }
+        const defaultColor = state.ui.activeType === "todo" ? "#FFF3B0" : "#FFB3C6";
+        entity.color = normalizeColor(color, defaultColor);
+        entity.updatedAt = Date.now();
+        els.freeColorInput.value = entity.color;
+        persistData();
+        renderSidebar();
+        renderSurface();
+      }
+
+      function confirmDeleteCurrent() {
+        confirmDelete(state.ui.activeType, state.ui.activeId);
+      }
+
+      function confirmDelete(type, id) {
+        const entity = type === "todo" ? findTodoList(id) : findNote(id);
+        if (!entity) {
+          return;
+        }
+        els.confirmTitle.textContent = `\u786e\u8ba4\u5220\u9664\u201c${entity.name}\u201d`;
+        els.confirmCopy.textContent = type === "todo"
+          ? "\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\uff0c\u6574\u4e2a\u5f85\u529e\u5217\u8868\u90fd\u4f1a\u88ab\u5220\u9664\u3002"
+          : "\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\uff0c\u8fd9\u5f20\u4fbf\u7b7e\u4f1a\u88ab\u6c38\u4e45\u79fb\u9664\u3002";
+        state.confirmAction = () => performDelete(type, id);
+        els.confirmDialog.showModal();
+      }
+
+      function performDelete(type, id) {
+        if (type === "todo") {
+          state.data.todoLists = state.data.todoLists.filter((list) => list.id !== id);
+        } else {
+          state.data.notes = state.data.notes.filter((note) => note.id !== id);
+        }
+        state.ui.renaming = false;
+        ensureSelection();
+        persistData();
+        persistUi();
+        render();
+      }
+
+      function addTodoItem(list, text) {
+        const order = list.items
+          .filter((item) => !item.done && !item.abandoned)
+          .reduce((max, item) => Math.max(max, item.order), -1) + 1;
+        list.items.push({
+          id: uid("item"),
+          text,
+          done: false,
+          abandoned: false,
+          order,
+          createdAt: Date.now()
+        });
+        list.updatedAt = Date.now();
+        persistData();
+        renderSurface();
+        renderSidebar();
+      }
+
+      function reorderTodoItems(list, draggedId, targetId) {
+        const active = list.items
+          .filter((item) => !item.done && !item.abandoned)
+          .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+        const draggedIndex = active.findIndex((item) => item.id === draggedId);
+        if (draggedIndex === -1) {
+          return;
+        }
+        const [dragged] = active.splice(draggedIndex, 1);
+        if (!targetId) {
+          active.push(dragged);
+        } else {
+          const targetIndex = active.findIndex((item) => item.id === targetId);
+          if (targetIndex === -1) {
+            active.push(dragged);
+          } else {
+            active.splice(targetIndex, 0, dragged);
+          }
+        }
+        active.forEach((item, index) => {
+          const source = list.items.find((entry) => entry.id === item.id);
+          if (source) {
+            source.order = index;
+          }
+        });
+        list.updatedAt = Date.now();
+        persistData();
+        renderSurface();
+      }
+
+      function normalizeTodoOrder(list) {
+        list.items
+          .filter((item) => !item.done && !item.abandoned)
+          .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
+          .forEach((item, index) => {
+            item.order = index;
+          });
+      }
+
+      function exportCurrent(type) {
+        const entity = getActiveEntity();
+        if (!entity) {
+          return;
+        }
+        const filename = `${slugify(entity.name)}.${type}`;
+        const text = state.ui.activeType === "todo"
+          ? exportTodoList(entity, type)
+          : exportNote(entity, type);
+        downloadText(filename, text);
+      }
+
+      function exportNote(note, type) {
+        if (type === "txt") {
+          return stripHtml(note.content);
+        }
+        return htmlToMarkdown(note.content);
+      }
+
+      function exportTodoList(list, type) {
+        const items = list.items
+          .slice()
+          .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
+          .map((item) => {
+            const mark = item.done ? "[x]" : item.abandoned ? "[-]" : "[ ]";
+            return `${mark} ${item.text}`;
+          });
+        if (type === "txt") {
+          return `${list.name}\n\n${items.join("\n")}`;
+        }
+        return `# ${list.name}\n\n${items.join("\n")}`;
+      }
+
+      function flushEditor() {
+        const editor = document.getElementById("noteEditor");
+        const note = getActiveNote();
+        if (!editor || !note) {
+          return;
+        }
+        note.content = editor.innerHTML;
+        note.updatedAt = Date.now();
+      }
+
+      async function onEditorPasteImage(event) {
+        const imageItem = Array.from(event.clipboardData?.items || []).find((item) => item.type.startsWith("image/"));
+        if (!imageItem) {
+          return;
+        }
+        event.preventDefault();
+        const file = imageItem.getAsFile();
+        if (!file) {
+          return;
+        }
+        const dataUrl = await fileToDataUrl(file);
+        insertImageAtSelection(dataUrl);
+      }
+
+      async function pasteImageFromClipboard() {
+        try {
+          if (!navigator.clipboard?.read) {
+            alert("\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u76f4\u63a5\u8bfb\u53d6\u526a\u8d34\u677f\u56fe\u7247\uff0c\u8bf7\u4f7f\u7528 Ctrl+V \u7c98\u8d34\u3002");
+            return;
+          }
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const type = item.types.find((entry) => entry.startsWith("image/"));
+            if (!type) {
+              continue;
+            }
+            const blob = await item.getType(type);
+            const dataUrl = await fileToDataUrl(blob);
+            insertImageAtSelection(dataUrl);
+            return;
+          }
+          alert("\u526a\u8d34\u677f\u4e2d\u6ca1\u6709\u56fe\u7247\u3002");
+        } catch (error) {
+          console.error("Clipboard read failed:", error);
+          alert("\u8bfb\u53d6\u526a\u8d34\u677f\u5931\u8d25\uff0c\u8bf7\u6539\u7528 Ctrl+V \u7c98\u8d34\u3002");
+        }
+      }
+
+      function insertImageAtSelection(dataUrl) {
+        const editor = document.getElementById("noteEditor");
+        const note = getActiveNote();
+        if (!editor || !note) {
+          return;
+        }
+        editor.focus();
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        img.alt = "pasted image";
+        const selection = window.getSelection();
+        const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+        if (range && editor.contains(range.commonAncestorContainer)) {
+          range.deleteContents();
+          range.insertNode(img);
+          range.setStartAfter(img);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        } else {
+          editor.appendChild(img);
+        }
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+
+      function getActiveEntity() {
+        return state.ui.activeType === "todo" ? findTodoList(state.ui.activeId) : findNote(state.ui.activeId);
+      }
+
+      function getActiveNote() {
+        return state.ui.activeType === "note" ? findNote(state.ui.activeId) : null;
+      }
+
+      function findNote(id) {
+        return state.data.notes.find((note) => note.id === id) || null;
+      }
+
+      function findTodoList(id) {
+        return state.data.todoLists.find((list) => list.id === id) || null;
+      }
+
+      function getSidebarNotes() {
+        return filterAndSort(state.data.notes, "note", { applyDateFilter: false, applyQueryFilter: true });
+      }
+
+      function getSidebarTodoLists() {
+        return filterAndSort(state.data.todoLists, "todo", { applyDateFilter: false, applyQueryFilter: true });
+      }
+
+      function filterAndSort(items, type, options) {
+        const settings = {
+          applyDateFilter: true,
+          applyQueryFilter: true,
+          ...options
+        };
+        const query = state.ui.searchQuery.toLowerCase();
+        const filterDate = state.ui.filterDate;
+        return items
+          .filter((item) => {
+            const matchesDate = !settings.applyDateFilter || !filterDate || formatDateKey(item.createdAt) === filterDate;
+            if (!matchesDate) {
+              return false;
+            }
+            if (!settings.applyQueryFilter || !query) {
+              return true;
+            }
+            if (type === "todo") {
+              return item.name.toLowerCase().includes(query)
+                || item.items.some((entry) => entry.text.toLowerCase().includes(query));
+            }
+            return item.name.toLowerCase().includes(query)
+              || stripHtml(item.content).toLowerCase().includes(query);
+          })
+          .sort((a, b) => {
+            if (type === "todo") {
+              return a.name.localeCompare(b.name, "zh-CN-u-co-pinyin");
+            }
+            if (a.pinned !== b.pinned) {
+              return a.pinned ? -1 : 1;
+            }
+            return b.updatedAt - a.updatedAt;
+          });
+      }
+
+      function getTodoItems(list, mode) {
+        return list.items
+          .filter((item) => mode === "active" ? (!item.done && !item.abandoned) : (item.done || item.abandoned))
+          .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+      }
+
+      function ensureSelection() {
+        const visibleNotes = getSidebarNotes();
+        const visibleTodos = getSidebarTodoLists();
+        const activeStillVisible = state.ui.activeType === "todo"
+          ? visibleTodos.some((item) => item.id === state.ui.activeId)
+          : visibleNotes.some((item) => item.id === state.ui.activeId);
+
+        if (activeStillVisible) {
+          return;
+        }
+
+        if (visibleNotes.length) {
+          state.ui.activeType = "note";
+          state.ui.activeId = visibleNotes[0].id;
+        } else if (visibleTodos.length) {
+          state.ui.activeType = "todo";
+          state.ui.activeId = visibleTodos[0].id;
+        } else {
+          state.ui.activeType = "note";
+          state.ui.activeId = "";
+        }
+      }
+
+      function persistData() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+        } catch (error) {
+          console.error("Failed to save data:", error);
+        }
+      }
+
+      function persistUi() {
+        try {
+          localStorage.setItem(UI_KEY, JSON.stringify(state.ui));
+        } catch (error) {
+          console.error("Failed to save ui:", error);
+        }
+      }
+
+      function hidePopups() {
+        els.colorPopover.hidden = true;
+        els.appMenu.hidden = true;
+        els.editorMenu.hidden = true;
+        els.todoMenu.hidden = true;
+      }
+
+      function togglePopup(node, rect) {
+        const visible = !node.hidden;
+        hidePopups();
+        if (visible) {
+          return;
+        }
+        node.hidden = false;
+        const width = node.offsetWidth;
+        const height = node.offsetHeight;
+        const left = Math.min(rect.left, window.innerWidth - width - 12);
+        const top = Math.min(rect.bottom + 8, window.innerHeight - height - 12);
+        node.style.left = `${Math.max(12, left)}px`;
+        node.style.top = `${Math.max(12, top)}px`;
+      }
+
+      function getPreferredCreateType() {
+        return state.ui.activeType === "todo" ? "todo" : "note";
+      }
+
+      function getFallbackName(type) {
+        return type === "todo" ? `\u5f85\u529e ${state.data.todoLists.length || 1}` : `\u4fbf\u7b7e ${state.data.notes.length || 1}`;
+      }
+
+      function normalizeColor(value, fallback) {
+        const color = String(value || "").trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+          return color.toUpperCase();
+        }
+        return fallback || "#FFB3C6";
+      }
+
+      function hasEditorContent(html) {
+        const div = document.createElement("div");
+        div.innerHTML = html || "";
+        return Boolean(div.textContent.trim() || div.querySelector("img"));
+      }
+
+      function stripHtml(html) {
+        const div = document.createElement("div");
+        div.innerHTML = html || "";
+        return div.textContent || "";
+      }
+
+      function getNoteTextPreview(note) {
+        const text = stripHtml(note.content).replace(/\s+/g, " ").trim();
+        return text ? text.slice(0, 200) : "\u8fd9\u5f20\u4fbf\u7b7e\u8fd8\u6ca1\u6709\u5185\u5bb9\u3002";
+      }
+
+      function htmlToMarkdown(html) {
+        const div = document.createElement("div");
+        div.innerHTML = html || "";
+        const lines = [];
+        div.childNodes.forEach((node) => {
+          if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+            lines.push(node.textContent.trim());
+            return;
+          }
+          if (node.nodeType !== Node.ELEMENT_NODE) {
+            return;
+          }
+          if (node.tagName === "IMG") {
+            lines.push(`![image](${node.getAttribute("src") || ""})`);
+            return;
+          }
+          const text = node.textContent.trim();
+          if (text) {
+            lines.push(text);
+          }
+        });
+        return lines.join("\n\n");
+      }
+
+      function downloadText(filename, content) {
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function formatDate(value) {
+        const date = new Date(value);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      }
+
+      function formatDateTime(value) {
+        const date = new Date(value);
+        return `${formatDate(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      }
+
+      function formatDateKey(value) {
+        return formatDate(value);
+      }
+
+      function formatMonthKey(value) {
+        const date = new Date(value);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      }
+
+      function parseMonthKey(value) {
+        const [year, month] = value.split("-").map(Number);
+        return new Date(year, month - 1, 1);
+      }
+
+      function shiftMonthKey(monthKey, delta) {
+        const date = parseMonthKey(monthKey);
+        date.setMonth(date.getMonth() + delta);
+        return formatMonthKey(date);
+      }
+
+      function slugify(text) {
+        return String(text || "export")
+          .trim()
+          .replace(/[\\/:*?"<>|]/g, "-")
+          .replace(/\s+/g, "-");
+      }
+
+      function uid(prefix) {
+        if (window.crypto && crypto.randomUUID) {
+          return `${prefix}-${crypto.randomUUID()}`;
+        }
+        return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+    })();
+  </script>
+</body>
+</html>
